@@ -1,0 +1,104 @@
+-- Load Rayfield UI Library
+local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
+
+-- Services
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local LocalPlayer = Players.LocalPlayer
+
+-- State
+local ESP_Enabled = false
+local ESP_Connections = {}
+local Highlights = {}
+
+-- Helper Functions
+local function createESP(player)
+    if player == LocalPlayer then return end
+    
+    local function applyHighlight(character)
+        if not character then return end
+        
+        -- Clean up existing
+        if Highlights[player] then
+            Highlights[player]:Destroy()
+            Highlights[player] = nil
+        end
+        
+        local highlight = Instance.new("Highlight")
+        highlight.Name = "ESP_Highlight"
+        highlight.Adornee = character
+        highlight.FillColor = Color3.fromRGB(255, 0, 0)
+        highlight.FillTransparency = 0.5
+        highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
+        highlight.OutlineTransparency = 0
+        highlight.Enabled = ESP_Enabled
+        highlight.Parent = character
+        
+        Highlights[player] = highlight
+    end
+
+    if player.Character then
+        applyHighlight(player.Character)
+    end
+    
+    ESP_Connections[player] = player.CharacterAdded:Connect(applyHighlight)
+end
+
+local function removeESP(player)
+    if Highlights[player] then
+        Highlights[player]:Destroy()
+        Highlights[player] = nil
+    end
+    if ESP_Connections[player] then
+        ESP_Connections[player]:Disconnect()
+        ESP_Connections[player] = nil
+    end
+end
+
+-- Create Window
+local Window = Rayfield:CreateWindow({
+   Name = "ขอดูหำหน่อย Menu",
+   LoadingTitle = "Loading Script...",
+   LoadingSubtitle = "Player ESP Only",
+   ConfigurationSaving = {
+      Enabled = false
+   },
+   KeySystem = false
+})
+
+-- Create Tab
+local MainTab = Window:CreateTab("Main", 4483362458) -- Title, Image
+
+-- Add Toggle for ESP
+local Toggle = MainTab:CreateToggle({
+   Name = "ขอดูหำหน่อย",
+   CurrentValue = false,
+   Flag = "PlayerESP_Toggle",
+   Callback = function(Value)
+      ESP_Enabled = Value
+      
+      -- Update state for all players
+      for player, highlight in pairs(Highlights) do
+          if highlight then
+              highlight.Enabled = ESP_Enabled
+          end
+      end
+   end,
+})
+
+-- Track Players
+for _, player in ipairs(Players:GetPlayers()) do
+    createESP(player)
+end
+
+local PlayerAddedConnection = Players.PlayerAdded:Connect(createESP)
+local PlayerRemovingConnection = Players.PlayerRemoving:Connect(removeESP)
+
+-- Unload / Cleanup logic if Rayfield closes
+Rayfield:OnUnload(function()
+    PlayerAddedConnection:Disconnect()
+    PlayerRemovingConnection:Disconnect()
+    for player, _ in pairs(ESP_Connections) do
+        removeESP(player)
+    end
+end)
