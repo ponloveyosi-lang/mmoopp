@@ -1,0 +1,224 @@
+-- Load Rayfield UI Library
+local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
+
+-- Services
+local Players = game:GetService("Players")
+local Workspace = game:GetService("Workspace")
+local LocalPlayer = Players.LocalPlayer
+
+-- State (Player ESP)
+local Player_ESP_Enabled = false
+local Player_ESP_Color = Color3.fromRGB(255, 0, 0)
+local Player_Highlights = {}
+local Player_Connections = {}
+
+-- State (NPC ESP)
+local NPC_ESP_Enabled = false
+local NPC_ESP_Color = Color3.fromRGB(255, 255, 0) -- สีเหลืองตั้งต้นสำหรับ NPC
+local NPC_Highlights = {}
+
+---------------------------------------------------------
+-- PLAYER ESP FUNCTIONS
+---------------------------------------------------------
+local function createPlayerESP(player)
+    if player == LocalPlayer then return end
+    
+    local function applyHighlight(character)
+        if not character then return end
+        
+        if Player_Highlights[player] then
+            Player_Highlights[player]:Destroy()
+            Player_Highlights[player] = nil
+        end
+        
+        local highlight = Instance.new("Highlight")
+        highlight.Name = "Player_ESP_Highlight"
+        highlight.Adornee = character
+        highlight.FillColor = Player_ESP_Color
+        highlight.FillTransparency = 0.5
+        highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
+        highlight.OutlineTransparency = 0
+        highlight.Enabled = Player_ESP_Enabled
+        highlight.Parent = character
+        
+        Player_Highlights[player] = highlight
+    end
+
+    if player.Character then
+        applyHighlight(player.Character)
+    end
+    
+    Player_Connections[player] = player.CharacterAdded:Connect(applyHighlight)
+end
+
+local function removePlayerESP(player)
+    if Player_Highlights[player] then
+        Player_Highlights[player]:Destroy()
+        Player_Highlights[player] = nil
+    end
+    if Player_Connections[player] then
+        Player_Connections[player]:Disconnect()
+        Player_Connections[player] = nil
+    end
+end
+
+---------------------------------------------------------
+-- NPC ESP FUNCTIONS
+---------------------------------------------------------
+local function isNPC(model)
+    if not model:IsA("Model") then return false end
+    if not model:FindFirstChildOfClass("Humanoid") then return false end
+    if not model:FindFirstChild("HumanoidRootPart") then return false end
+    if Players:GetPlayerFromCharacter(model) then return false end
+    return true
+end
+
+local function applyNPCHighlight(model)
+    if not isNPC(model) then return end
+    
+    if NPC_Highlights[model] then
+        NPC_Highlights[model]:Destroy()
+        NPC_Highlights[model] = nil
+    end
+    
+    local highlight = Instance.new("Highlight")
+    highlight.Name = "NPC_ESP_Highlight"
+    highlight.Adornee = model
+    highlight.FillColor = NPC_ESP_Color
+    highlight.FillTransparency = 0.5
+    highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
+    highlight.OutlineTransparency = 0
+    highlight.Enabled = NPC_ESP_Enabled
+    highlight.Parent = model
+    
+    NPC_Highlights[model] = highlight
+end
+
+local function removeNPCHighlight(model)
+    if NPC_Highlights[model] then
+        NPC_Highlights[model]:Destroy()
+        NPC_Highlights[model] = nil
+    end
+end
+
+---------------------------------------------------------
+-- CREATE UI
+---------------------------------------------------------
+local Window = Rayfield:CreateWindow({
+   Name = "มองESP By.Pond",
+   LoadingTitle = "Loading Script...",
+   LoadingSubtitle = "Player & NPC ESP Hub",
+   ConfigurationSaving = { Enabled = false },
+   KeySystem = false
+})
+
+-- TABS
+local PlayerTab = Window:CreateTab("ESP คน (Player)", 4483362458)
+local NPCTab = Window:CreateTab("ESP บอท (NPC)", 4483362458)
+
+---------------------------------------------------------
+-- PLAYER TAB ELEMENTS
+---------------------------------------------------------
+PlayerTab:CreateToggle({
+   Name = "เปิดใช้งาน ESP คน (Player)",
+   CurrentValue = false,
+   Flag = "PlayerESP_Toggle",
+   Callback = function(Value)
+      Player_ESP_Enabled = Value
+      for _, highlight in pairs(Player_Highlights) do
+          if highlight then
+              highlight.Enabled = Player_ESP_Enabled
+          end
+      end
+   end,
+})
+
+PlayerTab:CreateColorPicker({
+    Name = "สี ESP คน",
+    Color = Color3.fromRGB(255, 0, 0),
+    Flag = "PlayerESP_Color",
+    Callback = function(Value)
+        Player_ESP_Color = Value
+        for _, highlight in pairs(Player_Highlights) do
+            if highlight then
+                highlight.FillColor = Player_ESP_Color
+            end
+        end
+    end,
+})
+
+---------------------------------------------------------
+-- NPC TAB ELEMENTS
+---------------------------------------------------------
+NPCTab:CreateToggle({
+   Name = "เปิดใช้งาน ESP บอท (NPC)",
+   CurrentValue = false,
+   Flag = "NPCESP_Toggle",
+   Callback = function(Value)
+      NPC_ESP_Enabled = Value
+      for model, highlight in pairs(NPC_Highlights) do
+          if highlight and highlight.Parent then
+              highlight.Enabled = NPC_ESP_Enabled
+          else
+              NPC_Highlights[model] = nil
+          end
+      end
+   end,
+})
+
+NPCTab:CreateColorPicker({
+    Name = "สี ESP บอท",
+    Color = Color3.fromRGB(255, 255, 0),
+    Flag = "NPCESP_Color",
+    Callback = function(Value)
+        NPC_ESP_Color = Value
+        for _, highlight in pairs(NPC_Highlights) do
+            if highlight then
+                highlight.FillColor = NPC_ESP_Color
+            end
+        end
+    end,
+})
+
+---------------------------------------------------------
+-- INITIALIZATION & CONNECTIONS
+---------------------------------------------------------
+-- Initialize Players
+for _, player in ipairs(Players:GetPlayers()) do
+    createPlayerESP(player)
+end
+
+local PlayerAddedConnection = Players.PlayerAdded:Connect(createPlayerESP)
+local PlayerRemovingConnection = Players.PlayerRemoving:Connect(removePlayerESP)
+
+-- Initialize NPCs
+local DescendantAddedConnection = Workspace.DescendantAdded:Connect(function(descendant)
+    if isNPC(descendant) then
+        applyNPCHighlight(descendant)
+    end
+end)
+
+local DescendantRemovingConnection = Workspace.DescendantRemoving:Connect(function(descendant)
+    removeNPCHighlight(descendant)
+end)
+
+for _, object in ipairs(Workspace:GetDescendants()) do
+    if isNPC(object) then
+        applyNPCHighlight(object)
+    end
+end
+
+-- Cleanup
+Rayfield:OnUnload(function()
+    PlayerAddedConnection:Disconnect()
+    PlayerRemovingConnection:Disconnect()
+    DescendantAddedConnection:Disconnect()
+    DescendantRemovingConnection:Disconnect()
+    
+    for player, _ in pairs(Player_Connections) do
+        removePlayerESP(player)
+    end
+    for model, _ in pairs(NPC_Highlights) do
+        removeNPCHighlight(model)
+    end
+end)
