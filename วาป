@@ -1,0 +1,247 @@
+-- โหลด Rayfield Library
+local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
+
+local Window = Rayfield:CreateWindow({
+   Name = "Auto Steal & Fly System",
+   LoadingTitle = "Loading System...",
+   LoadingSubtitle = "by Assistant",
+   ConfigurationSaving = { Enabled = false },
+   KeySystem = false
+})
+
+local Tab = Window:CreateTab("Main", 4483362458)
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local player = Players.LocalPlayer
+
+local customHomeCFrame = nil
+local noclipEnabled = true     -- เปิด Noclip ไว้เป็นค่าเริ่มต้น
+local infiniteJumpEnabled = true -- เปิดกระโดดไม่จำกัดไว้เป็นค่าเริ่มต้น
+
+-- ฟังก์ชันดึง HumanoidRootPart
+local function getRootPart()
+    local character = player.Character or player.CharacterAdded:Wait()
+    return character:FindFirstChild("HumanoidRootPart")
+end
+
+-- 1. ระบบ Noclip (เดินทะลุกำแพง)
+RunService.Stepped:Connect(function()
+    if noclipEnabled and player.Character then
+        for _, part in ipairs(player.Character:GetDescendants()) do
+            if part:IsA("BasePart") then
+                part.CanCollide = false
+            end
+        end
+    end
+end)
+
+-- 2. ระบบ Infinite Jump (กระโดดไม่จำกัดกลางอากาศ)
+UserInputService.JumpRequest:Connect(function()
+    if infiniteJumpEnabled and player.Character then
+        local humanoid = player.Character:FindFirstChildOfClass("Humanoid")
+        if humanoid then
+            humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+        end
+    end
+end)
+
+-- ฟังก์ชันอ่านมูลค่า
+local function getItemValue(object)
+    local valueObj = object:FindFirstChild("Value") 
+        or object:FindFirstChild("Price") 
+        or object:FindFirstChild("Cost") 
+        or object:FindFirstChild("Money")
+        or object:FindFirstChild("Amount")
+        
+    if valueObj and (valueObj:IsA("IntValue") or valueObj:IsA("NumberValue")) then
+        return valueObj.Value
+    end
+
+    local attrValue = object:GetAttribute("Value") or object:GetAttribute("Price") or object:GetAttribute("Cost")
+    if attrValue and type(attrValue) == "number" then
+        return attrValue
+    end
+
+    local nameMatch = object.Name:match("(%d+)")
+    if nameMatch then
+        return tonumber(nameMatch)
+    end
+
+    return 0
+end
+
+-- ฟังก์ชันค้นหาเป้าหมายขโมยที่มูลค่าสูงสุด
+local function findBestStealTarget()
+    local highestValue = -1
+    local targetPrompt = nil
+    local targetCFrame = nil
+    local targetName = "Unknown"
+
+    for _, prompt in ipairs(workspace:GetDescendants()) do
+        if prompt:IsA("ProximityPrompt") then
+            local parent = prompt.Parent
+            if parent and not parent:IsDescendantOf(player.Character) then
+                local val = getItemValue(parent)
+                local cframe = nil
+                if parent:IsA("BasePart") then
+                    cframe = parent.CFrame
+                elseif parent:IsA("Model") then
+                    if parent.PrimaryPart then
+                        cframe = parent.PrimaryPart.CFrame
+                    else
+                        local part = parent:FindFirstChildWhichIsA("BasePart")
+                        if part then cframe = part.CFrame end
+                    end
+                end
+
+                if cframe and val >= highestValue then
+                    highestValue = val
+                    targetPrompt = prompt
+                    targetCFrame = cframe
+                    targetName = parent.Name
+                end
+            end
+        end
+    end
+
+    return targetCFrame, targetPrompt, highestValue, targetName
+end
+
+-- ฟังก์ชันค้นหาบ้านอัตโนมัติ
+local function findHomePosition()
+    local pName = player.Name:lower()
+    local pDisplayName = player.DisplayName:lower()
+
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        if obj:IsA("TextLabel") or obj:IsA("TextButton") then
+            local text = obj.Text:lower()
+            if text:find(pName) or text:find(pDisplayName) then
+                local parentPart = obj:FindFirstAncestorWhichIsA("BasePart") or obj:FindFirstAncestorWhichIsA("Model")
+                if parentPart then
+                    if parentPart:IsA("BasePart") then
+                        return parentPart.CFrame + Vector3.new(0, 5, 0)
+                    elseif parentPart:IsA("Model") then
+                        return parentPart:GetPivot() + Vector3.new(0, 5, 0)
+                    end
+                end
+            end
+        end
+    end
+
+    for _, spawn in ipairs(workspace:GetDescendants()) do
+        if spawn:IsA("SpawnLocation") then
+            return spawn.CFrame + Vector3.new(0, 5, 0)
+        end
+    end
+
+    return nil
+end
+
+---------------------------------------------------------
+-- UI Elements 
+---------------------------------------------------------
+
+-- 1. ปุ่มวาร์ปไปขโมยตัวที่แพงที่สุด
+Tab:CreateButton({
+   Name = "🥷 Warp & Steal Highest Value (วาร์ปไปขโมยตัวแพงสุด)",
+   Callback = function()
+       local root = getRootPart()
+       if not root then return end
+
+       local targetCFrame, targetPrompt, valueFound, targetName = findBestStealTarget()
+
+       if targetCFrame and targetPrompt then
+           if not customHomeCFrame then
+               customHomeCFrame = root.CFrame
+           end
+
+           root.CFrame = targetCFrame + Vector3.new(0, 2, 0)
+           fireproximityprompt(targetPrompt)
+
+           local displayValue = (valueFound > 0) and (tostring(valueFound) .. " บาท") or "มูลค่าสูงสุด"
+
+           Rayfield:Notify({
+               Title = "Steal Triggered!",
+               Content = "วาร์ปไปขโมย: " .. targetName .. " (" .. displayValue .. ")",
+               Duration = 3,
+               Image = 4483362458,
+           })
+       else
+           Rayfield:Notify({
+               Title = "Error!",
+               Content = "ไม่พบเป้าหมายที่มีปุ่มขโมย",
+               Duration = 3,
+               Image = 4483362458,
+           })
+       end
+   end,
+})
+
+-- 2. ปุ่มวาร์ปกลับบ้านโดยตรง
+Tab:CreateButton({
+   Name = "🏠 Warp Home (วาร์ปกลับบ้านโดยตรง)",
+   Callback = function()
+       local root = getRootPart()
+       if not root then return end
+
+       if customHomeCFrame then
+           root.CFrame = customHomeCFrame
+           Rayfield:Notify({
+               Title = "Warped Home!",
+               Content = "วาร์ปกลับบ้านเรียบร้อยแล้ว",
+               Duration = 3,
+               Image = 4483362458,
+           })
+           return
+       end
+
+       local homeCFrame = findHomePosition()
+       if homeCFrame then
+           root.CFrame = homeCFrame
+           Rayfield:Notify({
+               Title = "Warped Home!",
+               Content = "วาร์ปกลับบ้านสำเร็จ",
+               Duration = 3,
+               Image = 4483362458,
+           })
+       else
+           Rayfield:Notify({
+               Title = "Warning",
+               Content = "ไม่พบพิกัดบ้านอัตโนมัติ",
+               Duration = 3,
+               Image = 4483362458,
+           })
+       end
+   end,
+})
+
+-- 3. สวิตช์เปิด/ปิด Noclip (เดินทะลุกำแพง)
+Tab:CreateToggle({
+   Name = "👻 Noclip (เดินทะลุกำแพง/กรง)",
+   CurrentValue = true,
+   Flag = "NoclipToggle",
+   Callback = function(Value)
+       noclipEnabled = Value
+   end,
+})
+
+-- 4. สวิตช์เปิด/ปิด Infinite Jump (กระโดดไม่จำกัด)
+Tab:CreateToggle({
+   Name = "🦘 Infinite Jump (กระโดดกลางอากาศไม่จำกัด)",
+   CurrentValue = true,
+   Flag = "InfiniteJumpToggle",
+   Callback = function(Value)
+       infiniteJumpEnabled = Value
+   end,
+})
+
+-- ปุ่มลัดซ่อน/แสดง UI (กด K)
+Rayfield:CreateKeybind({
+   Name = "Toggle UI Keybind",
+   CurrentKeybind = "K",
+   HoldToInteract = false,
+   Flag = "UI_Keybind",
+   Callback = function(Keybind) end,
+})
