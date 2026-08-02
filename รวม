@@ -1,0 +1,28 @@
+local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
+
+local Window = Rayfield:CreateWindow({
+   Name = "รวม สคริปต์ BY.Pond ⚡",
+   LoadingTitle = "BY.Pond Hub",
+   Theme = "DarkBlue",
+   KeySystem = false
+})
+
+local MainTab = Window:CreateTab("🚀 Scripts", 4483362458)
+local SettingsTab = Window:CreateTab("⚙️ Settings", 4483362458)
+
+-- Functions
+local function load(url)
+    task.spawn(function() loadstring(game:HttpGet(url))() end)
+end
+
+local mm2Url = "https://raw.githubusercontent.com/gumanba/Scripts/main/MurderMysteryForBrainrots"
+local monsterUrl = "https://raw.githubusercontent.com/gumanba/Scripts/main/CatchaMonster"
+
+-- Buttons
+MainTab:CreateButton({Name = "🔪 Murder Mystery", Callback = function() load(mm2Url) end})
+MainTab:CreateButton({Name = "👾 Catch a Monster", Callback = function() load(monsterUrl) end})
+MainTab:CreateButton({Name = "⚡ Load Both (รวมสองตัว)", Callback = function() load(mm2Url) load(monsterUrl) end})
+
+-- Settings (Toggle UI)
+SettingsTab:CreateKeybind({Name = "เปิด/ปิด UI", CurrentKeybind = "RightControl", Flag = "UI_Key"})
+SettingsTab:CreateButton({Name = "🔴 ปิด UI (Destroy)", Callback = function() Rayfield:Destroy() end})
