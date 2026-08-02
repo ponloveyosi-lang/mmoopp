@@ -1,0 +1,281 @@
+-- โหลด Rayfield UI Library
+local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
+
+-- บริการของ Roblox (Services)
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local LocalPlayer = Players.LocalPlayer
+
+-- ==========================================
+-- สร้างหน้าต่าง UI หลัก (Window)
+-- ==========================================
+local Window = Rayfield:CreateWindow({
+    Name = "All-In-One Mobile Script Hub",
+    LoadingTitle = "กำลังโหลดระบบ...",
+    LoadingSubtitle = "by Assistant",
+    ConfigurationSaving = { Enabled = false },
+    Discord = { Enabled = false },
+    KeySystem = false
+})
+
+-- สร้าง Tab สำหรับฟังก์ชันหลัก
+local MainTab = Window:CreateTab("Main Features", 4483362458)
+
+-- ==========================================
+-- 1. ระบบ NoClip
+-- ==========================================
+local NoclipEnabled = false
+local NoclipConnection = nil
+
+local function ToggleNoclip(state)
+    NoclipEnabled = state
+    
+    if NoclipEnabled then
+        NoclipConnection = RunService.Stepped:Connect(function()
+            if NoclipEnabled then
+                local character = LocalPlayer.Character
+                if character then
+                    for _, part in pairs(character:GetDescendants()) do
+                        if part:IsA("BasePart") and part.CanCollide == true then
+                            part.CanCollide = false
+                        end
+                    end
+                end
+            end
+        end)
+    else
+        if NoclipConnection then
+            NoclipConnection:Disconnect()
+            NoclipConnection = nil
+        end
+        
+        local character = LocalPlayer.Character
+        if character then
+            for _, part in pairs(character:GetDescendants()) do
+                if part:IsA("BasePart") then
+                    part.CanCollide = true
+                end
+            end
+        end
+    end
+end
+
+MainTab:CreateSection("NoClip System")
+
+MainTab:CreateToggle({
+    Name = "เปิด / ปิด NoClip",
+    CurrentValue = false,
+    Flag = "NoClipToggle",
+    Callback = function(Value)
+        ToggleNoclip(Value)
+    end,
+})
+
+-- ==========================================
+-- 2. ระบบ Walk Speed Controller
+-- ==========================================
+local defaultSpeed = 16
+local targetSpeed = 16
+local isSpeedEnabled = false
+local speedLoop = nil
+
+local function updateSpeed()
+    if LocalPlayer and LocalPlayer.Character then
+        local Humanoid = LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+        if Humanoid then
+            if isSpeedEnabled then
+                Humanoid.WalkSpeed = targetSpeed
+            else
+                Humanoid.WalkSpeed = defaultSpeed
+            end
+        end
+    end
+end
+
+MainTab:CreateSection("Walk Speed System")
+
+MainTab:CreateToggle({
+    Name = "เปิดใช้งานความเร็ว (Enable Speed)",
+    CurrentValue = false,
+    Flag = "SpeedToggle",
+    Callback = function(Value)
+        isSpeedEnabled = Value
+        
+        if isSpeedEnabled then
+            speedLoop = RunService.RenderStepped:Connect(function()
+                updateSpeed()
+            end)
+        else
+            if speedLoop then
+                speedLoop:Disconnect()
+                speedLoop = nil
+            end
+            updateSpeed()
+        end
+    end,
+})
+
+MainTab:CreateSlider({
+    Name = "ระดับความเร็ว (Walk Speed Level)",
+    Range = {16, 200},
+    Increment = 1,
+    Suffix = " Speed",
+    CurrentValue = 16,
+    Flag = "SpeedSlider",
+    Callback = function(Value)
+        targetSpeed = Value
+        if isSpeedEnabled then
+            updateSpeed()
+        end
+    end,
+})
+
+-- ==========================================
+-- 3. ระบบ Jump Controller (NEW)
+-- ==========================================
+local InfiniteJumpEnabled = false
+local JumpPowerValue = 50
+
+-- ฟังก์ชันกระโดดไม่จำกัด
+UserInputService.JumpRequest:Connect(function()
+    if InfiniteJumpEnabled and LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid") then
+        LocalPlayer.Character:FindFirstChildOfClass("Humanoid"):ChangeState(Enum.HumanoidStateType.Jumping)
+    end
+end)
+
+-- อัปเดต Jump Power อัตโนมัติเมื่อตัวละครเกิดใหม่ (Reset/Respawn)
+LocalPlayer.CharacterAdded:Connect(function(character)
+    local humanoid = character:WaitForChild("Humanoid")
+    humanoid.UseJumpPower = true
+    humanoid.JumpPower = JumpPowerValue
+end)
+
+MainTab:CreateSection("Jump System")
+
+MainTab:CreateToggle({
+    Name = "กระโดดไม่จำกัด (Infinite Jump)",
+    CurrentValue = false,
+    Flag = "InfJumpToggle",
+    Callback = function(Value)
+        InfiniteJumpEnabled = Value
+    end,
+})
+
+MainTab:CreateSlider({
+    Name = "ความสูงการกระโดด (Jump Power)",
+    Range = {50, 500},
+    Increment = 5,
+    Suffix = " Power",
+    CurrentValue = 50,
+    Flag = "JumpPowerSlider",
+    Callback = function(Value)
+        JumpPowerValue = Value
+        if LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid") then
+            local humanoid = LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+            humanoid.UseJumpPower = true
+            humanoid.JumpPower = Value
+        end
+    end,
+})
+
+-- ==========================================
+-- 4. ระบบ Mobile Fly
+-- ==========================================
+local Flying = false
+local FlySpeed = 50
+local AlignOrientation, LinearVelocity, Attachment
+local FlyRenderConnection
+
+local function StartFlying()
+    local Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+    local HumanoidRootPart = Character:FindFirstChild("HumanoidRootPart")
+    local Humanoid = Character:FindFirstChildOfClass("Humanoid")
+
+    if not HumanoidRootPart or not Humanoid then return end
+
+    Attachment = Instance.new("Attachment")
+    Attachment.Parent = HumanoidRootPart
+
+    LinearVelocity = Instance.new("LinearVelocity")
+    LinearVelocity.Attachment0 = Attachment
+    LinearVelocity.MaxForce = 9e9
+    LinearVelocity.VectorVelocity = Vector3.zero
+    LinearVelocity.RelativeTo = Enum.ActuatorRelativeTo.World
+    LinearVelocity.Parent = HumanoidRootPart
+
+    AlignOrientation = Instance.new("AlignOrientation")
+    AlignOrientation.Attachment0 = Attachment
+    AlignOrientation.MaxTorque = 9e9
+    AlignOrientation.Responsiveness = 200
+    AlignOrientation.Mode = Enum.OrientationAlignmentMode.OneAttachment
+    AlignOrientation.CFrame = HumanoidRootPart.CFrame
+    AlignOrientation.Parent = HumanoidRootPart
+
+    Humanoid.PlatformStand = true
+
+    FlyRenderConnection = RunService.RenderStepped:Connect(function()
+        if not Flying or not HumanoidRootPart or not Humanoid then return end
+        
+        local Camera = workspace.CurrentCamera
+        AlignOrientation.CFrame = Camera.CFrame
+
+        local MoveDir = Humanoid.MoveDirection
+        if MoveDir.Magnitude > 0 then
+            LinearVelocity.VectorVelocity = (Camera.CFrame.Rotation * MoveDir).Unit * FlySpeed
+        else
+            LinearVelocity.VectorVelocity = Vector3.zero
+        end
+    end)
+end
+
+local function StopFlying()
+    if FlyRenderConnection then FlyRenderConnection:Disconnect() end
+    if LinearVelocity then LinearVelocity:Destroy() end
+    if AlignOrientation then AlignOrientation:Destroy() end
+    if Attachment then Attachment:Destroy() end
+
+    local Character = LocalPlayer.Character
+    if Character then
+        local Humanoid = Character:FindFirstChildOfClass("Humanoid")
+        if Humanoid then Humanoid.PlatformStand = false end
+    end
+end
+
+MainTab:CreateSection("Mobile Fly System")
+
+MainTab:CreateToggle({
+    Name = "เปิด / ปิด บิน (Toggle Fly)",
+    CurrentValue = false,
+    Flag = "FlyToggle",
+    Callback = function(Value)
+        Flying = Value
+        if Flying then
+            StartFlying()
+        else
+            StopFlying()
+        end
+    end,
+})
+
+MainTab:CreateSlider({
+    Name = "ความเร็วบิน (Fly Speed)",
+    Range = {10, 300},
+    Increment = 5,
+    Suffix = " Speed",
+    CurrentValue = 50,
+    Flag = "FlySpeedSlider",
+    Callback = function(Value)
+        FlySpeed = Value
+    end,
+})
+
+-- ==========================================
+-- แจ้งเตือนเมื่อโหลดเสร็จ
+-- ==========================================
+Rayfield:Notify({
+    Title = "สคริปต์พร้อมใช้งาน!",
+    Content = "โหลดระบบรวม 4 ฟังก์ชันเรียบร้อยแล้ว",
+    Duration = 3,
+    Image = 4483362458,
+})
