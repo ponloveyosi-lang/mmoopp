@@ -13,29 +13,34 @@ local Camera = workspace.CurrentCamera
 -- สร้างหน้าต่าง UI หลัก (Window)
 -- ==========================================
 local Window = Rayfield:CreateWindow({
-    Name = "All-In-One Hub (Fly & Auto Steal)",
-    LoadingTitle = "กำลังโหลดระบบทั้งหมด...",
+    Name = "All-In-One Hub (Multi-Floating UI)",
+    LoadingTitle = "กำลังโหลดระบบ...",
     LoadingSubtitle = "by Assistant",
     ConfigurationSaving = { Enabled = false },
     Discord = { Enabled = false },
     KeySystem = false
 })
 
--- สร้าง Tabs ทั้งหมด 4 แท็บ
+-- แท็บเมนูหลัก
 local FlyTab = Window:CreateTab("🛸 Mobile Fly", 4483362458)
 local MainWarpTab = Window:CreateTab("🎯 Auto Steal & Home", 4483362458)
 local WaypointTab = Window:CreateTab("📌 Waypoint Warp", 4483362458)
 local MiscTab = Window:CreateTab("🏃 Movement & Misc", 4483362458)
 
--- Variables สำหรับระบบต่างๆ
+-- ตัวแปรระบบ
 local Flying = false
 local FlySpeed = 2
 local FlyRenderConnection
 
 local customHomeCFrame = nil
 local markedCFrame = nil
+local previousCFrame = nil
 local noclipEnabled = false
 local infiniteJumpEnabled = false
+
+-- ตัวแปรอ้างอิง UI Element
+local FlyToggleRef = nil
+local btnFlyRef = nil
 
 -- ฟังก์ชันดึง HumanoidRootPart
 local function getRootPart()
@@ -43,8 +48,16 @@ local function getRootPart()
     return character:FindFirstChild("HumanoidRootPart")
 end
 
+-- บันทึกพิกัดก่อนวาร์ป
+local function savePreviousPosition()
+    local root = getRootPart()
+    if root then
+        previousCFrame = root.CFrame
+    end
+end
+
 -- ==========================================
--- 1. ระบบ Mobile True 3D Camera Fly
+-- 1. ระบบ Mobile True 3D Camera Fly Engine
 -- ==========================================
 local PlayerScripts = LocalPlayer:WaitForChild("PlayerScripts")
 local PlayerModule
@@ -78,7 +91,6 @@ local function StartFlying()
         
         if rawInput.Magnitude > 0 then
             local camCFrame = Camera.CFrame
-            
             local forwardVector = camCFrame.LookVector * (-rawInput.Z)
             local rightVector = camCFrame.RightVector * rawInput.X
             local moveDirection = (forwardVector + rightVector)
@@ -107,8 +119,29 @@ local function StopFlying()
     end
 end
 
+local function toggleFlyState(state)
+    Flying = state
+    if Flying then
+        StartFlying()
+        if btnFlyRef then
+            btnFlyRef.Text = "🚁 บิน: ON"
+            btnFlyRef.TextColor3 = Color3.fromRGB(100, 255, 100)
+        end
+    else
+        StopFlying()
+        if btnFlyRef then
+            btnFlyRef.Text = "🚁 บิน: OFF"
+            btnFlyRef.TextColor3 = Color3.fromRGB(255, 100, 100)
+        end
+    end
+
+    if FlyToggleRef and FlyToggleRef.CurrentValue ~= state then
+        FlyToggleRef:Set(state)
+    end
+end
+
 -- ==========================================
--- 2. ระบบ Movement Loops (Noclip & Inf Jump)
+-- 2. ระบบ Movement Loops
 -- ==========================================
 RunService.Stepped:Connect(function()
     if noclipEnabled and LocalPlayer.Character then
@@ -228,6 +261,7 @@ local function actionWarpAndSteal()
     local targetCFrame, targetPrompt, valueFound, targetName = findBestStealTarget()
 
     if targetCFrame and targetPrompt then
+        savePreviousPosition()
         if not customHomeCFrame then
             customHomeCFrame = root.CFrame
         end
@@ -257,6 +291,7 @@ local function actionWarpHome()
     local root = getRootPart()
     if not root then return end
 
+    savePreviousPosition()
     if customHomeCFrame then
         root.CFrame = customHomeCFrame
         Rayfield:Notify({
@@ -291,6 +326,7 @@ local function actionWarpToMarked()
     local root = getRootPart()
     if root then
         if markedCFrame then
+            savePreviousPosition()
             root.CFrame = markedCFrame
             Rayfield:Notify({
                 Title = "Teleported!",
@@ -309,156 +345,198 @@ local function actionWarpToMarked()
     end
 end
 
+local function actionWarpToPrevious()
+    local root = getRootPart()
+    if root then
+        if previousCFrame then
+            local currentPos = root.CFrame
+            root.CFrame = previousCFrame
+            previousCFrame = currentPos
+            Rayfield:Notify({
+                Title = "Warped Back!",
+                Content = "วาร์ปกลับตำแหน่งก่อนหน้าแล้ว",
+                Duration = 3,
+                Image = 4483362458,
+            })
+        else
+            Rayfield:Notify({
+                Title = "Warning!",
+                Content = "ยังไม่มีประวัติพิกัดก่อนหน้านี้!",
+                Duration = 3,
+                Image = 4483362458,
+            })
+        end
+    end
+end
+
 -- ==========================================
--- 4. สร้าง UI ปุ่มลอย (Floating Buttons - 3 ปุ่ม)
+-- 4. ฟังก์ชันสร้าง UI ลากได้ (Helper Function)
 -- ==========================================
 local screenGui = Instance.new("ScreenGui")
-screenGui.Name = "FloatingWarpButtons"
+screenGui.Name = "MultiFloatingUI"
 screenGui.ResetOnSpawn = false
 
-pcall(function()
-    screenGui.Parent = CoreGui
-end)
-if not screenGui.Parent then
-    screenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+pcall(function() screenGui.Parent = CoreGui end)
+if not screenGui.Parent then screenGui.Parent = LocalPlayer:WaitForChild("PlayerGui") end
+
+local function createFloatingWindow(titleText, size, defaultPos)
+    local frame = Instance.new("Frame")
+    frame.Size = size
+    frame.Position = defaultPos
+    frame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+    frame.BackgroundTransparency = 0.2
+    frame.Active = true
+    frame.Visible = false
+    frame.Parent = screenGui
+
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 10)
+    corner.Parent = frame
+
+    local stroke = Instance.new("UIStroke")
+    stroke.Color = Color3.fromRGB(100, 100, 100)
+    stroke.Thickness = 1.5
+    stroke.Parent = frame
+
+    local dragTitle = Instance.new("TextLabel")
+    dragTitle.Size = UDim2.new(1, 0, 0, 20)
+    dragTitle.BackgroundTransparency = 1
+    dragTitle.Text = ":: " .. titleText .. " ::"
+    dragTitle.TextColor3 = Color3.fromRGB(180, 180, 180)
+    dragTitle.TextSize = 10
+    dragTitle.Font = Enum.Font.SourceSansBold
+    dragTitle.Parent = frame
+
+    -- Drag Logic
+    local dragging, dragInput, dragStart, startPos
+    frame.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            dragStart = input.Position
+            startPos = frame.Position
+            input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then dragging = false end
+            end)
+        end
+    end)
+    frame.InputChanged:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+            dragInput = input
+        end
+    end)
+    UserInputService.InputChanged:Connect(function(input)
+        if input == dragInput and dragging then
+            local delta = input.Position - dragStart
+            frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+        end
+    end)
+
+    return frame
 end
 
-local mainFrame = Instance.new("Frame")
-mainFrame.Size = UDim2.new(0, 160, 0, 156) -- ขยายความสูงรองรับ 3 ปุ่ม
-mainFrame.Position = UDim2.new(0.02, 0, 0.35, 0)
-mainFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
-mainFrame.BackgroundTransparency = 0.2
-mainFrame.Active = true
-mainFrame.Visible = false
-mainFrame.Parent = screenGui
+-- ------------------------------------------
+-- 4.1 เมนูลอย 1: บิน (Fly Menu)
+-- ------------------------------------------
+local flyFrame = createFloatingWindow("บิน", UDim2.new(0, 140, 0, 65), UDim2.new(0.02, 0, 0.25, 0))
 
-local frameCorner = Instance.new("UICorner")
-frameCorner.CornerRadius = UDim.new(0, 10)
-frameCorner.Parent = mainFrame
+btnFlyRef = Instance.new("TextButton")
+btnFlyRef.Size = UDim2.new(0.9, 0, 0, 35)
+btnFlyRef.Position = UDim2.new(0.05, 0, 0, 22)
+btnFlyRef.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+btnFlyRef.TextColor3 = Color3.fromRGB(255, 100, 100)
+btnFlyRef.TextSize = 12
+btnFlyRef.Font = Enum.Font.SourceSansBold
+btnFlyRef.Text = "🚁 บิน: OFF"
+btnFlyRef.Parent = flyFrame
 
-local frameStroke = Instance.new("UIStroke")
-frameStroke.Color = Color3.fromRGB(100, 100, 100)
-frameStroke.Thickness = 1.5
-frameStroke.Parent = mainFrame
+local cornerFly = Instance.new("UICorner")
+cornerFly.CornerRadius = UDim.new(0, 6)
+cornerFly.Parent = btnFlyRef
 
-local dragTitle = Instance.new("TextLabel")
-dragTitle.Size = UDim2.new(1, 0, 0, 22)
-dragTitle.Position = UDim2.new(0, 0, 0, 0)
-dragTitle.BackgroundTransparency = 1
-dragTitle.Text = ":: ลากเพื่อขยับ ::"
-dragTitle.TextColor3 = Color3.fromRGB(180, 180, 180)
-dragTitle.TextSize = 11
-dragTitle.Font = Enum.Font.SourceSansBold
-dragTitle.Parent = mainFrame
-
-local dragging, dragInput, dragStart, startPos
-
-local function update(input)
-    local delta = input.Position - dragStart
-    mainFrame.Position = UDim2.new(
-        startPos.X.Scale, 
-        startPos.X.Offset + delta.X, 
-        startPos.Y.Scale, 
-        startPos.Y.Offset + delta.Y
-    )
-end
-
-mainFrame.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-        dragging = true
-        dragStart = input.Position
-        startPos = mainFrame.Position
-
-        input.Changed:Connect(function()
-            if input.UserInputState == Enum.UserInputState.End then
-                dragging = false
-            end
-        end)
-    end
+btnFlyRef.MouseButton1Click:Connect(function()
+    toggleFlyState(not Flying)
 end)
 
-mainFrame.InputChanged:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
-        dragInput = input
-    end
+-- ------------------------------------------
+-- 4.2 เมนูลอย 2: Waypoint & Previous
+-- ------------------------------------------
+local wayFrame = createFloatingWindow("มาร์ก/ย้อนกลับ", UDim2.new(0, 150, 0, 110), UDim2.new(0.02, 0, 0.38, 0))
+
+local btnToMarked = Instance.new("TextButton")
+btnToMarked.Size = UDim2.new(0.9, 0, 0, 35)
+btnToMarked.Position = UDim2.new(0.05, 0, 0, 24)
+btnToMarked.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+btnToMarked.TextColor3 = Color3.fromRGB(255, 255, 255)
+btnToMarked.TextSize = 12
+btnToMarked.Font = Enum.Font.SourceSansBold
+btnToMarked.Text = "🌀 ไปจุดมาร์ก"
+btnToMarked.Parent = wayFrame
+
+local cornerToMarked = Instance.new("UICorner")
+cornerToMarked.CornerRadius = UDim.new(0, 6)
+cornerToMarked.Parent = btnToMarked
+
+btnToMarked.MouseButton1Click:Connect(function()
+    actionWarpToMarked()
 end)
 
-UserInputService.InputChanged:Connect(function(input)
-    if input == dragInput and dragging then
-        update(input)
-    end
+local btnToPrevious = Instance.new("TextButton")
+btnToPrevious.Size = UDim2.new(0.9, 0, 0, 35)
+btnToPrevious.Position = UDim2.new(0.05, 0, 0, 65)
+btnToPrevious.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+btnToPrevious.TextColor3 = Color3.fromRGB(255, 255, 255)
+btnToPrevious.TextSize = 12
+btnToPrevious.Font = Enum.Font.SourceSansBold
+btnToPrevious.Text = "↩️ กลับจุดก่อนหน้า"
+btnToPrevious.Parent = wayFrame
+
+local cornerToPrevious = Instance.new("UICorner")
+cornerToPrevious.CornerRadius = UDim.new(0, 6)
+cornerToPrevious.Parent = btnToPrevious
+
+btnToPrevious.MouseButton1Click:Connect(function()
+    actionWarpToPrevious()
 end)
 
--- ปุ่ม 1: วาร์ปตัวแพง
+-- ------------------------------------------
+-- 4.3 เมนูลอย 3: Auto Steal & Home
+-- ------------------------------------------
+local stealFrame = createFloatingWindow("ขโมย/กลับบ้าน", UDim2.new(0, 150, 0, 110), UDim2.new(0.02, 0, 0.55, 0))
+
 local btnSteal = Instance.new("TextButton")
-btnSteal.Size = UDim2.new(0.9, 0, 0, 38)
-btnSteal.Position = UDim2.new(0.05, 0, 0, 26)
+btnSteal.Size = UDim2.new(0.9, 0, 0, 35)
+btnSteal.Position = UDim2.new(0.05, 0, 0, 24)
 btnSteal.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
 btnSteal.TextColor3 = Color3.fromRGB(255, 255, 255)
-btnSteal.TextSize = 13
+btnSteal.TextSize = 12
 btnSteal.Font = Enum.Font.SourceSansBold
 btnSteal.Text = "🥷 วาร์ปตัวแพง"
-btnSteal.Parent = mainFrame
+btnSteal.Parent = stealFrame
 
 local cornerSteal = Instance.new("UICorner")
 cornerSteal.CornerRadius = UDim.new(0, 6)
 cornerSteal.Parent = btnSteal
 
-local strokeSteal = Instance.new("UIStroke")
-strokeSteal.Color = Color3.fromRGB(255, 100, 100)
-strokeSteal.Thickness = 1.5
-strokeSteal.Parent = btnSteal
-
 btnSteal.MouseButton1Click:Connect(function()
     actionWarpAndSteal()
 end)
 
--- ปุ่ม 2: วาร์ปกลับบ้าน
 local btnHome = Instance.new("TextButton")
-btnHome.Size = UDim2.new(0.9, 0, 0, 38)
-btnHome.Position = UDim2.new(0.05, 0, 0, 69)
+btnHome.Size = UDim2.new(0.9, 0, 0, 35)
+btnHome.Position = UDim2.new(0.05, 0, 0, 65)
 btnHome.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
 btnHome.TextColor3 = Color3.fromRGB(255, 255, 255)
-btnHome.TextSize = 13
+btnHome.TextSize = 12
 btnHome.Font = Enum.Font.SourceSansBold
 btnHome.Text = "🏠 วาร์ปกลับบ้าน"
-btnHome.Parent = mainFrame
+btnHome.Parent = stealFrame
 
 local cornerHome = Instance.new("UICorner")
 cornerHome.CornerRadius = UDim.new(0, 6)
 cornerHome.Parent = btnHome
 
-local strokeHome = Instance.new("UIStroke")
-strokeHome.Color = Color3.fromRGB(100, 200, 255)
-strokeHome.Thickness = 1.5
-strokeHome.Parent = btnHome
-
 btnHome.MouseButton1Click:Connect(function()
     actionWarpHome()
-end)
-
--- ปุ่ม 3: วาร์ปจุดมาร์ก (เพิ่มใหม่)
-local btnMarked = Instance.new("TextButton")
-btnMarked.Size = UDim2.new(0.9, 0, 0, 38)
-btnMarked.Position = UDim2.new(0.05, 0, 0, 112)
-btnMarked.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-btnMarked.TextColor3 = Color3.fromRGB(255, 255, 255)
-btnMarked.TextSize = 13
-btnMarked.Font = Enum.Font.SourceSansBold
-btnMarked.Text = "🌀 วาร์ปจุดมาร์ก"
-btnMarked.Parent = mainFrame
-
-local cornerMarked = Instance.new("UICorner")
-cornerMarked.CornerRadius = UDim.new(0, 6)
-cornerMarked.Parent = btnMarked
-
-local strokeMarked = Instance.new("UIStroke")
-strokeMarked.Color = Color3.fromRGB(150, 255, 150)
-strokeMarked.Thickness = 1.5
-strokeMarked.Parent = btnMarked
-
-btnMarked.MouseButton1Click:Connect(function()
-    actionWarpToMarked()
 end)
 
 -- ==========================================
@@ -468,16 +546,13 @@ end)
 -- Tab 1: Mobile Fly
 FlyTab:CreateSection("Mobile Fly System")
 
-FlyTab:CreateToggle({
+FlyToggleRef = FlyTab:CreateToggle({
     Name = "เปิด / ปิด บิน (Toggle Fly)",
     CurrentValue = false,
     Flag = "FlyToggle",
     Callback = function(Value)
-        Flying = Value
-        if Flying then
-            StartFlying()
-        else
-            StopFlying()
+        if Flying ~= Value then
+            toggleFlyState(Value)
         end
     end,
 })
@@ -512,7 +587,7 @@ MainWarpTab:CreateButton({
 })
 
 -- Tab 3: Waypoint Warp
-WaypointTab:CreateSection("📍 ระบบมาร์กจุดวาร์ป")
+WaypointTab:CreateSection("📍 ระบบมาร์กจุดวาร์ป & พิกัดเดิม")
 
 WaypointTab:CreateButton({
    Name = "📍 2. มาร์กจุดวาร์ป (Set Custom Point)",
@@ -538,6 +613,13 @@ WaypointTab:CreateButton({
 })
 
 WaypointTab:CreateButton({
+   Name = "↩️ วาร์ปกลับจุดก่อนหน้า (Warp to Previous Pos)",
+   Callback = function()
+       actionWarpToPrevious()
+   end,
+})
+
+WaypointTab:CreateButton({
    Name = "❌ ลบจุดมาร์ก (Clear Marked Point)",
    Callback = function()
        markedCFrame = nil
@@ -551,16 +633,36 @@ WaypointTab:CreateButton({
 })
 
 -- Tab 4: Movement & Misc
-MiscTab:CreateSection("🛠️ ระบบช่วยเคลื่อนที่ & ตั้งค่า")
+MiscTab:CreateSection("👁️ ตั้งค่าเปิด/ปิด เมนูลอย (Floating UIs)")
 
 MiscTab:CreateToggle({
-   Name = "👁️ แสดง/ซ่อน ปุ่มลอยหน้าจอ (Floating Buttons)",
+   Name = "🚁 สวิทช์เปิด/ปิด เมนูลอย [บิน]",
    CurrentValue = false,
-   Flag = "FloatingToggle",
+   Flag = "FlyFloatingToggle",
    Callback = function(Value)
-       mainFrame.Visible = Value
+       flyFrame.Visible = Value
    end,
 })
+
+MiscTab:CreateToggle({
+   Name = "📌 สวิทช์เปิด/ปิด เมนูลอย [มาร์ก/ย้อนกลับ]",
+   CurrentValue = false,
+   Flag = "WayFloatingToggle",
+   Callback = function(Value)
+       wayFrame.Visible = Value
+   end,
+})
+
+MiscTab:CreateToggle({
+   Name = "🎯 สวิทช์เปิด/ปิด เมนูลอย [ขโมย/กลับบ้าน]",
+   CurrentValue = false,
+   Flag = "StealFloatingToggle",
+   Callback = function(Value)
+       stealFrame.Visible = Value
+   end,
+})
+
+MiscTab:CreateSection("🛠️ ระบบช่วยเคลื่อนที่ & ตั้งค่า")
 
 MiscTab:CreateToggle({
    Name = "👻 Noclip (เดินทะลุกำแพง/กรง)",
@@ -581,20 +683,17 @@ MiscTab:CreateToggle({
 })
 
 MiscTab:CreateKeybind({
-   Name = "⌨️ ปุ่มเปิด/ปิด เมนู (Toggle UI)",
+   Name = "⌨️ ปุ่มเปิด/ปิด เมนูหลัก (Toggle UI)",
    CurrentKeybind = "K",
    HoldToInteract = false,
    Flag = "UI_Keybind",
    Callback = function(Keybind) end,
 })
 
--- บังคับปิดปุ่มลอยอีกครั้งหลังจากโหลดระบบเสร็จสิ้น
-mainFrame.Visible = false
-
--- แจ้งเตือนเมื่อโหลดสคริปต์รวมสำเร็จ
+-- แจ้งเตือนเมื่อโหลดสำเร็จ
 Rayfield:Notify({
-    Title = "สคริปต์โหลดสมบูรณ์!",
-    Content = "เพิ่มปุ่มวาร์ปจุดมาร์กใน UI ปุ่มลอยเรียบร้อยแล้ว",
+    Title = "สคริปต์รันสำเร็จ!",
+    Content = "ระบบเปิด/ปิดด้วย Rayfield UI พร้อมใช้งานแล้ว",
     Duration = 3,
     Image = 4483362458,
 })
