@@ -1,0 +1,58 @@
+-- โหลด Rayfield Library
+local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
+
+-- สร้าง Window
+local Window = Rayfield:CreateWindow({
+   Name = "Auto Buy Backpack Items",
+   LoadingTitle = "Script Loading...",
+   LoadingSubtitle = "by Assistant",
+   ConfigurationSaving = { Enabled = false },
+   Discord = { Enabled = false },
+   KeySystem = false
+})
+
+-- สร้าง Tab หลัก
+local Tab = Window:CreateTab("Main", 4483362458)
+
+-- ตัวแปรควบคุมสถานะ
+local autoBuy = false
+local remoteEvent = game:GetService("ReplicatedStorage"):WaitForChild("RemoteEvent"):WaitForChild("ServerRemoteEvent")
+
+-- สร้าง Toggle ปุ่มเปิด-ปิด
+local Toggle = Tab:CreateToggle({
+   Name = "Auto Buy Items ",
+   CurrentValue = false,
+   Flag = "AutoBuyToggle",
+   Callback = function(Value)
+      autoBuy = Value
+      
+      -- ทำงานลูปเมื่อเปิดใช้งาน
+      if autoBuy then
+         task.spawn(function()
+            while autoBuy do
+               for i = 1, 6 do
+                  if not autoBuy then break end
+                  
+                  local args = {
+                     "Buy_Backpack_Item",
+                     "\233\129\147\229\133\183",
+                     i
+                  }
+                  
+                  remoteEvent:FireServer(unpack(args))
+                  task.wait(0.1) -- ระยะเวลาหน่วงระหว่างส่งข้อมูลแต่ละชิ้น (ปรับแต่งได้)
+               end
+               task.wait(0.5) -- ระยะเวลาหน่วงรอบการทำงานถัดไป (ปรับแต่งได้)
+            end
+         end)
+      end
+   end,
+})
+
+-- แจ้งเตือนเมื่อโหลดสำเร็จ
+Rayfield:Notify({
+   Title = "System Ready",
+   Content = "โหลด UI เรียบร้อยแล้ว",
+   Duration = 3,
+   Image = 4483362458,
+})
