@@ -5,7 +5,7 @@ local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 local Window = Rayfield:CreateWindow({
    Name = "Auto Buy Backpack Items",
    LoadingTitle = "Script Loading...",
-   LoadingSubtitle = "by Assistant",
+   LoadingSubtitle = "Fast Buy System",
    ConfigurationSaving = { Enabled = false },
    Discord = { Enabled = false },
    KeySystem = false
@@ -14,35 +14,60 @@ local Window = Rayfield:CreateWindow({
 -- สร้าง Tab หลัก
 local Tab = Window:CreateTab("Main", 4483362458)
 
--- ตัวแปรควบคุมสถานะ
+-- ตัวแปรควบคุมระบบ
 local autoBuy = false
+local buyDelay = 0.1 -- ค่าความเร็วเริ่มต้น (วินาที)
 local remoteEvent = game:GetService("ReplicatedStorage"):WaitForChild("RemoteEvent"):WaitForChild("ServerRemoteEvent")
+
+-- ฟังก์ชันสำหรับส่งคำขอซื้อไอเทม 1-6
+local function buyAllItems()
+   for i = 1, 6 do
+      if not autoBuy then break end
+      
+      local args = {
+         "Buy_Backpack_Item",
+         "\233\129\147\229\133\183",
+         i
+      }
+      
+      remoteEvent:FireServer(unpack(args))
+      
+      -- ใช้ความเร็วตามที่ปรับไว้ใน Slider (หากตั้งเป็น 0 จะไม่รอเลย)
+      if buyDelay > 0 then
+         task.wait(buyDelay)
+      end
+   end
+end
+
+-- สร้าง Slider ปรับความเร็ว
+local SpeedSlider = Tab:CreateSlider({
+   Name = "Buy Delay Speed (Seconds)",
+   Range = {0, 1},
+   Increment = 0.01,
+   Suffix = "s",
+   CurrentValue = 0.1,
+   Flag = "BuySpeedSlider",
+   Callback = function(Value)
+      buyDelay = Value
+   end,
+})
 
 -- สร้าง Toggle ปุ่มเปิด-ปิด
 local Toggle = Tab:CreateToggle({
-   Name = "Auto Buy Items ",
+   Name = "Auto Buy Items (1-6)",
    CurrentValue = false,
    Flag = "AutoBuyToggle",
    Callback = function(Value)
       autoBuy = Value
       
-      -- ทำงานลูปเมื่อเปิดใช้งาน
       if autoBuy then
          task.spawn(function()
+            -- ซื้อทันที 1 รอบแรกโดยไม่รอรอบลูป
+            buyAllItems()
+            
+            -- ทำงานวนลูปต่อเนื่อง
             while autoBuy do
-               for i = 1, 6 do
-                  if not autoBuy then break end
-                  
-                  local args = {
-                     "Buy_Backpack_Item",
-                     "\233\129\147\229\133\183",
-                     i
-                  }
-                  
-                  remoteEvent:FireServer(unpack(args))
-                  task.wait(0.1) -- ระยะเวลาหน่วงระหว่างส่งข้อมูลแต่ละชิ้น (ปรับแต่งได้)
-               end
-               task.wait(0.5) -- ระยะเวลาหน่วงรอบการทำงานถัดไป (ปรับแต่งได้)
+               buyAllItems()
             end
          end)
       end
@@ -52,7 +77,7 @@ local Toggle = Tab:CreateToggle({
 -- แจ้งเตือนเมื่อโหลดสำเร็จ
 Rayfield:Notify({
    Title = "System Ready",
-   Content = "โหลด UI เรียบร้อยแล้ว",
+   Content = "โหลดระบบซื้อทันทีและตัวปรับความเร็วเรียบร้อย",
    Duration = 3,
    Image = 4483362458,
 })
